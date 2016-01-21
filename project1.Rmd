@@ -13,6 +13,7 @@ Load and transform the data for the analysis
 
 ```{r}
 options(width=120)
+
 #
 # write a function geteloaddatadf() - you will assign the return value to eloaddf
 # in the function do the following
@@ -24,6 +25,43 @@ options(width=120)
 # the file has 15 min interval data from 1/1/2014 to 12/30/2015
 # when you import the data, the first column of your dataset should be dates in POSIXct format
 # HINT: use the strptime and as.POSIX.ct functions to form the eloaddf$dates
+
+# This library will allow R to read .xlsx files and load them
+library(openxlsx)
+
+# Converts numeric date to character date for elec data
+formatelecDate = function(date)
+{
+  c.date = paste(paste(as.integer(date/10000), as.integer(date/100) %% 100, sep = "/"), date %% 100, sep = "/");
+  
+  return(c.date);
+}
+
+# Converts numeric time to character time for elec data
+formatelecTime = function(time)
+{
+  seconds = 0;
+  minutes = time %% 100;
+  hours = as.integer(time/100);
+  
+  c.time = paste(paste(hours, minutes, sep = ":"), seconds, sep = ":");
+  
+  return(c.time)
+}
+
+geteloaddatadf = function()
+{
+  data = read.xlsx("elecloaddata.xlsx")
+  data$DATE = formatelecDate(data$DATE);
+  data$TIME = formatelecTime(data$TIME);
+  
+  eloaddf = data.frame(dates = as.POSIXct(strptime(paste(data$DATE, data$TIME), "%m/%d/%y %H:%M:%S"), tz = "GMT"), kwh = data$kWh, kwVAR = data$kVARh);
+    
+  return(eloaddf)
+}
+
+eloaddf = geteloaddatadf();
+
 #
 # write a function getweatherdf() - you will assign the return value to weatherdf
 # 2. Next load the weather data from NOAA into a data frame weatherdf. The data is in 1874606932872dat.txt
@@ -33,6 +71,55 @@ options(width=120)
 # you need to use fixed width parsing to read the data into a data frame.
 # add a column called dates to the dataframe similar to #1 above
 #
+
+# library to read in fixed columns
+library(readr)
+
+# Converts numeric date to character date for weather data
+formatweathDate = function(date)
+{
+  c.date = paste(paste(as.integer(date/1000000) %% 100, as.integer(date/10000) %% 100, sep = "/"), as.integer(date/100000000), sep = "/");
+   
+  return(c.date);
+}
+
+# Converts numeric time to character time for weather data
+formatweathTime = function(time)
+{
+  seconds = 0;
+  minutes = time %% 100;
+  hours = as.integer(time/100) %% 100;
+  
+  c.time = paste(paste(hours, minutes, sep = ":"), seconds, sep = ":");
+  
+  return(c.time)
+}
+
+# took some iformation from 3505doc.txt
+getweatherdf = function()
+{  
+  data = read_fwf("1874606932872dat.txt", skip = 1, na = c("*", "**", "***", "****", "*****"),
+                  fwf_widths(c(7, 6, 13, 4, 4, 
+                               4, 4, 4, 2, 2, 2, 5, 
+                               3, 3, 3, 3, 3, 3, 3, 3, 
+                               2, 5, 5, 7, 6, 7, 
+                               4, 4, 6, 6, 6, 6, 2)));
+  names(data) = c("USAF", "WBAN", "YR__MODAHRMN", "DIR", "SPD",
+                "GUS", "CLG", "SKC", "L", "M", "H", "VSB",
+                "MW.1", "MW.2", "MW.3", "MW.4", "AW.1", "AW.2", "AW.3", "AW.4", 
+                "W", "TEMP", "DEWP", "SLP", "ALT", "STP",  
+                "MAX", "MIN", "PCP01", "PCP06", "PCP24", "PCPXX", "SD");
+  
+  date = formatweathDate(data$YR__MODAHRMN);
+  time = formatweathTime(data$YR__MODAHRMN);
+  
+  data$dates = as.POSIXct(strptime(paste(date, time), "%m/%d/%Y %H:%M:%S"), tz = "GMT");
+  
+  return(data)
+}
+
+weatherdf = getweatherdf();
+
 # write a funcion getbillsdf() - you will assign the return value to billsdf
 # 3. Next load the bill data from billdata.xlsx
 # this data is monthly and carefully note the start and end date of each billing period. 
@@ -41,6 +128,23 @@ options(width=120)
 # distchrgkw, mttkwh, tbckwh,nugckwh, sbckwh, rggieekwh, deliverykwh, 
 # totdeliverychrg, supplychrg, totalchrg
 #
+
+getbillsdf = function()
+{
+  data = read.xlsx("billdata.xlsx")
+  
+  names(data) = c("billdate", "billstartdt", "billenddt", "kwh", "mindemandkw", "actualdemandkw", 
+                  "custcharge", "distchrgkw", "mttkwh", "tbckwh", "nugckwh", "sbckwh", "rggieekwh", 
+                  "deliverykwh", "totdeliverychrg", "supplychrg", "totalchrg");
+  
+  data$billdate = convertToDate(data$billdate, origin = "1900-01-01");
+  data$billstartdt = convertToDate(data$billstartdt, origin = "1900-01-01");
+  data$billenddt = convertToDate(data$billenddt, origin = "1900-01-01");
+  
+  return(data)
+}
+
+billsdf = getbillsdf();
 
 ```
 
@@ -57,6 +161,13 @@ Display the monthly load profile
 ```{r}
 # display a summary of the electric load data eloaddf$kwh by summarizing it by year, month and total kwh over each month
 # your answer should display 24 rows without the header.
+
+month.year = format(eloaddf$dates, "%Y %m");
+total.kwh = aggregate(eloaddf$kwh, list(month.year), sum);
+
+names(total.kwh) = c("Year/Month", "Total kWh");
+print(total.kwh, row.names = F);
+
 ```
 
 Now let us do some plotting of the load data
@@ -67,13 +178,41 @@ Now let us do some plotting of the load data
 # next create a plot frame with two panels side by side
 # On the left panel show a heat map of kwh data for 2014 with x-axis as months and y-axis as hour of the day (1 to 24). use subsetting of the data frame rather than copying the data into yet another data frame
 # On the right panel show a heat map of kwh data for 2015 with x-axis as months and y-axis as hour of the day (1 to 24). use subsetting of the data frame rather than copying the data into yet another data frame
+
+# substract 1 to move the 24:00 time to previous hour
+hour=cut(as.POSIXct(eloaddf$dates-1), "hour");
+
+eloadhrdf = aggregate(eloaddf$kwh, list(hour), sum);
+names(eloadhrdf) = c("dates", "kwh");
+
+eloadhrdf$dates = as.POSIXct(strptime(eloadhrdf$dates, "%Y-%m-%d %H:%M:%S"), tz = "GMT");
+
+# install ggplot2 for heat map
+library(ggplot2)
+
+idx.14 = which(format(eloadhrdf$dates, "%Y") == "2014")
+
+gg14 = ggplot(data = eloadhrdf[idx.14, ], aes(x = format(dates, "%m"), y = format(dates, "%H"), fill = kwh)) + geom_tile() + xlab("Month") + ylab("Hour");
+
+gg15 = ggplot(data = eloadhrdf[-idx.14, ], aes(x = format(dates, "%m"), y = format(dates, "%H"), fill = kwh)) + geom_tile() + xlab("Month") + ylab("Hour");
+
+library(grid)
+library(gridExtra)
+
+grid.arrange(gg14, gg15, ncol = 2)
+
 ```
-REPLACE THIS SECTION WITH YOUR COMMENTS ON THE DATA
+The heat maps are closely identical except for the early hours of April and August which seemed to have low kWh is 2014.  Although overall, 2015 has a higher range and therefore used more power in that year.
 
 We plot the weather data using boxplot to explore the variation in temperature graphically
 
 ```{r}
 # plot the weather data. Use boxplots in ggplot2 with month on the x-axis and temperature in y-axis
+
+bp = ggplot(data = weatherdf, aes(x = format(weatherdf$dates, "%m"), y = TEMP)) + geom_boxplot() + xlab("Month") + ylab("Temperature")
+
+bp
+
 ```
 
 We are now ready to build a simple predictive model.
@@ -83,6 +222,19 @@ We are now ready to build a simple predictive model.
 # combining selective columns from eloadhrdf and weatherdf
 # your dataframe should be called modeldatadf and the columns should be dates, year, month, hrofday, temp, kwh
 #
+hour=cut(as.POSIXct(weatherdf$dates), "hour");
+hour = as.POSIXct(hour, tz = "GMT");
+idx = which(!duplicated(hour) & format(weatherdf$dates, "%Y") != 2016);
+
+# inner join
+modeldatadf = merge(data.frame(dates = eloadhrdf$dates, kwh = eloadhrdf$kwh), data.frame(dates = hour[idx], temp = weatherdf$TEMP[idx]));
+
+modeldatadf$year = as.factor(format(modeldatadf$dates, "%Y"));
+modeldatadf$month = as.factor(format(modeldatadf$dates, "%m"));
+modeldatadf$hrofday = as.factor(format(modeldatadf$dates, "%H"));
+
+modeldatadf = modeldatadf[c(1, 4, 5, 6, 3, 2)];
+
 #
 # write a simple function called predmodel. the model object should be the return parameter
 # pass in the appropriate data frames.
@@ -91,10 +243,25 @@ We are now ready to build a simple predictive model.
 # your model should only use 2014 data for your prediction model
 #
 # use the summary function and display the results of the function
+
+# use default gaussian family
+premodel = function(data)
+{
+  glm.fit = glm(kwh ~ month + hrofday + temp, data = data, subset = year == 2014);
+  
+  return(glm.fit)
+}
+
+model.2014 = premodel(modeldatadf);
+summary(model.2014)
+
 ```
 
-REPLACE THIS SECTION WITH YOUR COMMENTS OF YOUR "TOY" PREDICTIVE MODEL. FOCUS ON WHICH COVARIATES 
-ARE STATISTICALLY SIGNIFICANT
+In the year 2014 it seems that the model used the month of January and first hour of the day as the intercepts.
+
+There is a decline in kwh in march and a steady increase after.  There is a sharp increase in October and sharply drops after.  This is obviously caused by changing of the seasons.
+
+In terms of hour of the day, the amount of kwh declines up until the 5th hour and then usage increases.  It increase until hour 16 and declines again. This is probably due to less energy being used during hours of sleep and increases during the hours of the daylight.  The hours of the day are probably due to air conditioning, and day to day technology being used.
 
 Now show you skills in Machine Learning!
 
@@ -106,6 +273,24 @@ Now show you skills in Machine Learning!
 # You have free reign to display and explain your results graphically
 #
 #
+
+library(gbm)
+idx = which(modeldatadf$year == 2014);
+train = modeldatadf[idx, 3:6];
+
+# address of office
+set.seed(6814);
+
+gbm.fit = gbm(kwh ~ month + hrofday + temp, data = train, distribution = "gaussian", shrinkage = 0.01, interaction.dept = 2, var.monotone = c(0, 0, 1), n.trees = 3000, cv.folds = 10, verbose = T)
+
+best.iter_train = gbm.perf(gbm.fit, method = "cv")
+summary(gbm.fit)
+gbm.fit$cv.error[best.iter_train]
+gbm.fit$train.error[best.iter_train]
+plot(x = gbm.fit, i.var = "hrofday", n.trees = best.iter_train)
+plot(x = gbm.fit, i.var = "month", n.trees = best.iter_train)
+plot(x = gbm.fit, i.var = "temp", n.trees = best.iter_train)
+
 ```
 Lets now compare the predicted model for 2015 with the bill data kwh!
 
@@ -114,8 +299,33 @@ Lets now compare the predicted model for 2015 with the bill data kwh!
 # run your machine learning model and create a data frame of dates, kwh for 1hr interval data for 2015. note you
 # may need to include the last few days of 2014 in your dataset due to the billing dates in January (see billdata.xlsx)
 # call your data frame pred2015df.
-# now for each of the 12 rows (billing periods) in the billsdf, sum the kwh for the date range in each of the rows from pred2015df for the corresponding start and end of billing in billsdf 
+
+idx = which(modeldatadf$dates >= as.POSIXct("2014-12-20 0:00:00 GMT", "%Y-%m-%d %H:%M:%S", tz = "GMT"));
+
+pred2015df = modeldatadf[idx, ];
+
+# now for each of the 12 rows (billing periods) in the billsdf, sum the kwh for the date range in each of the rows from pred2015df for the corresponding start and end of billing in billsdf
+
+predkwh = predict(gbm.fit, pred2015df, type = "response", n.trees = best.iter_train);
+
 # create a resultsdf which has billdate, predkwh (from pred2015df), actualkwh (from billsdf)
+
+resultsdf = data.frame(dates = billsdf$billdate, predkwh = integer(12), actualkwh = billsdf$kwh);
+
+idx = which(pred2015df$dates < as.POSIXct(billsdf$billstartdt[2]));
+resultsdf$predkwh[1] = sum(pred2015df$kwh[idx])
+
+for (i in 2:11)
+{
+  idx = which(pred2015df$dates >= as.POSIXct(billsdf$billstartdt[i]) & 
+              pred2015df$dates < as.POSIXct(billsdf$billstartdt[i+1]))
+    resultsdf$predkwh[i] = sum(pred2015df$kwh[idx])  
+}
+
+idx = which(pred2015df$dates >= as.POSIXct(billsdf$billstartdt[12]));
+resultsdf$predkwh[12] = sum(pred2015df$kwh[idx])
+
+resultsdf
 # display the results
 ```
 
